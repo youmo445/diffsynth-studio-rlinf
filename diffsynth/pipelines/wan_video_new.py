@@ -1660,11 +1660,10 @@ def model_fn_wan_video(
     control_camera_latents_input = None,
     fuse_vae_embedding_in_latents: bool = False,
     model_type="Wan2.1-T2V-14B",
-    bs_1: bool = True,
     **kwargs,
 ):
 
-
+    bs_1 = True if len(action.shape) == 2 else False
 
     if sliding_window_size is not None and sliding_window_stride is not None:
         model_kwargs = dict(

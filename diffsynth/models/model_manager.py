@@ -110,7 +110,7 @@ def load_model_from_single_file(state_dict, model_names, model_classes, model_re
             model = model.eval()
         # model.load_state_dict(model_state_dict, assign=True)
         model = model.to_empty(device=device)
-        debug_state_dict_mismatch(model, model_state_dict)
+        # debug_state_dict_mismatch(model, model_state_dict)
         model.load_state_dict(model_state_dict, strict=False, assign=True)
         # 如果模型有action_mlp1属性，则初始化它,这个应该仅在训练时生效
         if hasattr(model, "action_mlp1"):
@@ -537,7 +537,7 @@ class ModelManager:
                 fetched_models.append(model)
                 fetched_model_paths.append(model_path)
         if len(fetched_models) == 0:
-            print(f"No {model_name} models available.")
+            # print(f"No {model_name} models available.")
             return None
         if len(fetched_models) == 1:
             print(f"Using {model_name} from {fetched_model_paths[0]}.")
