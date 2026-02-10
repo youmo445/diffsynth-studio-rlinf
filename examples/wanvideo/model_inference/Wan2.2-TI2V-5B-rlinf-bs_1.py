@@ -25,7 +25,7 @@ inference_configs = [
 
 
 window = 9
-total_frames = 257
+total_frames = 505
 
 
 rgb = np.load("/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/val_data/step_0/seed_1/rgb.npy")

@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
-class MyNpyDatasetnew(Dataset):
+class RLinfNpyDataset(Dataset):
     """
     dataset_base_path/  
         rgb.npy  : [T, N, 3, H, W]

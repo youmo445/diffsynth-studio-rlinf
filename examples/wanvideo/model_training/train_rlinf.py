@@ -4,7 +4,8 @@ from PIL import Image
 from diffsynth import load_state_dict
 from diffsynth.pipelines.wan_video_new import WanVideoPipeline, ModelConfig
 from diffsynth.trainers.utils import DiffusionTrainingModule, ModelLogger, launch_training_task, wan_parser
-from diffsynth.trainers.zsq_single_npy_dataset import MyNpyDatasetnew
+from diffsynth.trainers.dataset import RLinfNpyDataset
+# from diffsynth.trainers.zsq_single_npy_dataset import MyNpyDatasetnew
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # --- Patch Start: 允许加载包含 set 的权重文件 ---
@@ -146,19 +147,20 @@ if __name__ == "__main__":
     parser.add_argument("--static_video_prob", type=float, default=0.15, help="Probability of replacing the sample with a static video (action=0)")
     parser.add_argument("--use_wow_checkpoint", action="store_true",help="Whether to load the WoW checkpoint to overwrite the base model weights.")
     parser.add_argument("--val_interval", type=int, default=5, help="Validation interval in epochs")
-    parser.add_argument("--dataset",type=str,default="MyNpyDataset",help="Dataset type for training")
+    parser.add_argument("--dataset",type=str,default="RLinfNpyDataset",help="Dataset type for training")
+    parser.add_argument("--dataset_base_dir",type=str,default="/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/",help="Base path for training dataset")
     args = parser.parse_args()
 
-    if args.dataset == "MyNpyDatasetnew":
-        dataset = MyNpyDatasetnew(
-            base_path='/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/train_data',
+    if args.dataset == "RLinfNpyDataset":
+        dataset = RLinfNpyDataset(
+            base_path=os.path.join(args.dataset_base_dir, 'train_data'),
             repeat=args.dataset_repeat,
             num_frames=args.num_frames,
         )
-        val_dataset = MyNpyDatasetnew(
-            base_path='/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/val_data',
-            repeat=1, # 验证集不需要重复
-            num_frames=args.num_frames # 保持与训练一致
+        val_dataset = RLinfNpyDataset(
+            base_path=os.path.join(args.dataset_base_dir, 'val_data'),
+            repeat=1, 
+            num_frames=args.num_frames 
         )
     else:
         raise NotImplementedError('this dataset type not implemented')

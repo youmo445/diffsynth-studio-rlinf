@@ -588,6 +588,7 @@ def launch_training_task(
                 epoch_steps += 1
                 global_step += 1
 
+                # to avoid the too long epoch 
                 if epoch_steps > 500:
                     break
         if accelerator.is_main_process and epoch_steps > 0:
@@ -599,7 +600,6 @@ def launch_training_task(
             val_steps = 0
             if accelerator.is_main_process:
                 print(f"\nRunning validation for epoch {epoch_id}...")
-            
 
             for data in tqdm(val_dataloader, desc="Validation", disable=not accelerator.is_local_main_process):
                 with torch.no_grad():
