@@ -1,6 +1,6 @@
 import os
 from setuptools import setup, find_packages
-import pkg_resources
+# import pkg_resources
 
 # Path to the requirements file
 requirements_path = os.path.join(os.path.dirname(__file__), "requirements.txt")
