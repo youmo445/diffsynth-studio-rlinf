@@ -13,7 +13,7 @@ import gc
 
 
 
-model_ckpt_path = "/mnt/project_rlinf/jzn/workspace/DiffSynth-Studio_zsq/outputs/0201-object/epoch-2199.safetensors"
+model_ckpt_path = "/opt/zsq/DiffSynth-Studio/models/train/0201-object-TI2V2-wo-block/epoch-49.safetensors"
 lora_rows = [
     (None, "Full Model"),
 ]
@@ -28,7 +28,7 @@ window = 9
 total_frames = 505
 
 
-rgb = np.load("/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/val_data/step_0/seed_1/rgb.npy")
+rgb = np.load("/opt/zsq/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/val_data/step_0/seed_0/rgb.npy")
 video_np = rgb[:, 0]  # [num_frames, 3, H, W]
 print(f'video:{video_np.shape}')
 gt_video_full = []
@@ -37,7 +37,7 @@ for frame_img in video_np:
         frame_img = (frame_img * 255).clip(0, 255)
     frame_img = frame_img.astype(np.uint8)
     gt_video_full.append(Image.fromarray(frame_img))
-action_full = np.load("/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/val_data/step_0/seed_1/actions.npy")[:,0]
+action_full = np.load("/opt/zsq/mnt/project_rlinf/jzn/workspace/latest/RLinf/dataset_for_posttrain_worldmodel_libero_object/base_policy_rollout/val_data/step_0/seed_0/actions.npy")[:,0]
 action_full = torch.from_numpy(action_full).float()
 gt_gripper_all = action_full[:, -1].clone() 
 
@@ -70,7 +70,7 @@ def get_pipeline(lora_path):
         device="cuda:0",
         model_configs=[
             ModelConfig(path=model_ckpt_path, offload_device="cpu"),
-            ModelConfig(path="/mnt/project_rlinf/jzn/workspace/DiffSynth-Studio/ckpt/Wan2.2_VAE.pth", offload_device="cpu"),
+            ModelConfig(path="/opt/zsq/Wan2.1/Wan2.2-TI2V-5B/Wan2.2_VAE.pth", offload_device="cpu"),
         ],
     )
     if lora_path:
@@ -214,3 +214,4 @@ for t in range(total_frames):
 save_video(concat_frames, "concat_rows_5B.mp4", fps=30, quality=5)
 print("\n===> Done! Saved concat_lora_rows_5B.mp4")
 
+# export PYTHONPATH=/opt/zsq/diffsynth-studio-rlinf:$PYTHONPATH

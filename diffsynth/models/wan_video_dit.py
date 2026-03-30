@@ -5,7 +5,6 @@ import math
 from typing import Tuple, Optional
 from einops import rearrange
 from .utils import hash_state_dict_keys
-from .wan_video_camera_controller import SimpleAdapter
 from timm.models.vision_transformer import Mlp, PatchEmbed
 try:
     import flash_attn_interface
