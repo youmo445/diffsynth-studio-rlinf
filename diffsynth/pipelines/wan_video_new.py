@@ -1119,6 +1119,8 @@ def model_fn_wan_video(
 
     action_raw = action.clone()
     if dit.I2V or dit.TI2V2 or dit.TI2V1:
+        # get action embedding in shape [B, T, D]
+        # action embedding for text like cross-attn
         if isinstance(action, np.ndarray):
             action = torch.from_numpy(action)
         action = action.to(dtype=x.dtype, device=x.device)
@@ -1131,6 +1133,7 @@ def model_fn_wan_video(
             context = action_emb
 
     if context is None and dit.TI2V3:
+        # get zero context if TI2V3 but no context
         context = torch.zeros(x.shape[0], 1, dit.dim, dtype=x.dtype, device=x.device)
     
 
@@ -1141,17 +1144,21 @@ def model_fn_wan_video(
         assert torch.isfinite(y).all(), "y has NaN/Inf"
     if clip_feature is not None:
         assert torch.isfinite(clip_feature).all(), "clip_feature has NaN/Inf"
+    
     # Camera control
+    # downsample x
     x = dit.patchify(x, control_camera_latents_input)
 
 
     if dit.TI2V2 or dit.TI2V3:
-        if not bs_1:
-            action = action_raw
-            if isinstance(action, np.ndarray):
-                action = torch.from_numpy(action)
+        # AdaLN for action embedding
+        action = action_raw
+        if isinstance(action, np.ndarray):
+            action = torch.from_numpy(action)
+        action = action.to(dtype=context.dtype, device=context.device)
 
-            action = action.to(dtype=context.dtype, device=context.device)
+        if not bs_1:
+            # batch inference
             B, T, D = action.shape
 
             first = action[:, 0:1, :]          # [B, 1, D]
@@ -1163,10 +1170,7 @@ def model_fn_wan_video(
             action_emb = dit.action_mlp2(action)
 
         elif bs_1:
-            action = action_raw
-            if isinstance(action, np.ndarray):
-                action = torch.from_numpy(action)
-            action = action.to(dtype=context.dtype, device=context.device)
+            # single inference or training
             action = torch.cat([action[0:1].repeat(3,1), action], dim=0)
             action = action.reshape(x.shape[2],-1)
             assert torch.isfinite(action).all(), f"action input has NaN/Inf. Shape: {action.shape}, min: {action.min()}, max: {action.max()}"

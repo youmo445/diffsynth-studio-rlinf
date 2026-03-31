@@ -250,11 +250,14 @@ class GateModule(nn.Module):
         return x + gate * residual
 
 class DiTBlock(nn.Module):
-    def __init__(self, has_image_input: bool, dim: int, num_heads: int, ffn_dim: int, eps: float = 1e-6):
+    def __init__(self, has_image_input: bool, dim: int, num_heads: int, ffn_dim: int, eps: float = 1e-6, muiltiview_cross_attn: bool = False, frame_level_cross_attn: bool = False):
         super().__init__()
         self.dim = dim
         self.num_heads = num_heads
         self.ffn_dim = ffn_dim
+        self.multiview_cross_attn = muiltiview_cross_attn
+        self.frame_level_cross_attn = frame_level_cross_attn
+
         self.self_attn = SelfAttention(dim, num_heads, eps)
         self.cross_attn = CrossAttention(
             dim, num_heads, eps, has_image_input=has_image_input)
@@ -266,6 +269,10 @@ class DiTBlock(nn.Module):
         self.modulation = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
         self.gate = GateModule() 
 
+        if self.multiview_cross_attn:
+            # 使用 CrossAttention 类，但我们将用它来做视角间的 Cross-Attn
+            self.mv_cross_attn = CrossAttention(dim, num_heads, eps, has_image_input=False)
+     
     def forward(self, x, context, t_mod, freqs):
         has_seq = len(t_mod.shape) == 4
         chunk_dim = 2 if has_seq else 1
@@ -279,7 +286,34 @@ class DiTBlock(nn.Module):
             )
         input_x = modulate(self.norm1(x), shift_msa, scale_msa)
         x = self.gate(x, gate_msa, self.self_attn(input_x, freqs))
-        x = x + self.cross_attn(self.norm3(x), context)
+
+        if self.multiview_cross_attn:
+            f = 4
+            v_hw = 16            # 每个视角的 patch 数 (8x8)
+    
+            x_views = rearrange(x, "b (f v v_hw) c -> (b f) v v_hw c", f=f, v=2, v_hw=v_hw)
+            # [1, 128, 3072] -> [1*4, 2, 16, 3072]
+            # 提取两个视角
+            view1 = x_views[:, 0] # [(B*f), v_hw, C] [4, 16, 3072]
+            view2 = x_views[:, 1] # [(B*f), v_hw, C] [4, 16, 3072]
+             
+            res1 = self.mv_cross_attn(view1, view2)
+            res2 = self.mv_cross_attn(view2, view1)
+             
+            mv_res = torch.stack([res1, res2], dim=1) 
+            x = x + rearrange(mv_res, "(b f) v v_hw c -> b (f v v_hw) c", b=x.shape[0], f=f)
+
+        elif self.frame_level_cross_attn:
+            assert x.shape[1] % context.shape[1] == 0, "帧级 Cross-Attn 要求 x 的序列长度是 (f h w)，而 context 的序列长度是 f 的倍数"
+            f = context.shape[1] # 帧数
+            hw = 64 # 每帧 patch 数
+            x_reshaped = rearrange(self.norm3(x), "b (f hw) c -> (b f) hw c", f=f, hw=hw)
+            ctx_reshaped = rearrange(context, "b f c -> (b f) 1 c")
+            x_out = self.cross_attn(x_reshaped, ctx_reshaped)
+            x_out = rearrange(x_out, "(b f) hw c -> b (f hw) c", f=f)
+            x = x + x_out
+        else:
+            x = x + self.cross_attn(self.norm3(x), context)
         input_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
         x = self.gate(x, gate_mlp, self.ffn(input_x))
         return x
@@ -448,10 +482,7 @@ class WanModel(torch.nn.Module):
             self.ref_conv = nn.Conv2d(16, dim, kernel_size=(2, 2), stride=(2, 2))
         self.has_image_pos_emb = has_image_pos_emb
         self.has_ref_conv = has_ref_conv
-        if add_control_adapter:
-            self.control_adapter = SimpleAdapter(in_dim_control_adapter, dim, kernel_size=patch_size[1:], stride=patch_size[1:])
-        else:
-            self.control_adapter = None
+
 
     def patchify(self, x: torch.Tensor, control_camera_latents_input: Optional[torch.Tensor] = None):
         x = self.patch_embedding(x)
