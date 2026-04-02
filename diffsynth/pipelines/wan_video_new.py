@@ -1203,7 +1203,7 @@ def model_fn_wan_video(
             ]).flatten()
             t = dit.time_embedding(sinusoidal_embedding_1d(dit.freq_dim, timestep).unsqueeze(0)).repeat(B, 1, 1)
             if dit.TI2V2 or dit.TI2V3:
-                action_emb = action_emb.unsqueeze(2).repeat(1,1,64,1).flatten(1,2)
+                action_emb = action_emb.unsqueeze(2).repeat(1,1,300,1).flatten(1,2)
                 t = t + action_emb
             t_mod = dit.time_projection(t).unflatten(2, (6, dit.dim))
         elif bs_1:
@@ -1215,8 +1215,9 @@ def model_fn_wan_video(
 
             if dit.TI2V2 or dit.TI2V3:
                 action_emb = action_emb.unsqueeze(0) # [1, T, 3072]
-                action_emb = action_emb.unsqueeze(2).repeat(1,1,64,1).flatten(1,2)
+                action_emb = action_emb.unsqueeze(2).repeat(1,1,300,1).flatten(1,2)
                 t = t + action_emb
+            print(f'the range of t and action_emb before projection, t: min {t.min().item()}, max {t.max().item()}, action_emb: min {action_emb.min().item()}, max {action_emb.max().item()}')
             t_mod = dit.time_projection(t).unflatten(2, (6, dit.dim))
     else:
         t = dit.time_embedding(sinusoidal_embedding_1d(dit.freq_dim, timestep))

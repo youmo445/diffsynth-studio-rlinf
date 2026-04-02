@@ -1,6 +1,6 @@
-torch>=2.0.0
-torchvision
-transformers
+# torch>=2.0.0
+# torchvision
+transformers == 4.57.1
 imageio
 imageio[ffmpeg]
 safetensors
@@ -13,3 +13,7 @@ pynvml
 pandas
 accelerate
 peft
+
+timm
+matplotlib
+seaborn

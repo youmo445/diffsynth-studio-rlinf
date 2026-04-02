@@ -4,7 +4,7 @@ from PIL import Image
 from diffsynth import load_state_dict
 from diffsynth.pipelines.wan_video_new import WanVideoPipeline, ModelConfig
 from diffsynth.trainers.utils import DiffusionTrainingModule, ModelLogger, launch_training_task, wan_parser
-from diffsynth.trainers.utils import RLinfNpyDataset
+from diffsynth.trainers.utils import RLinfNpyDataset, AgiBotWCDataset, AgiBotWCAbsDataset
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # --- Patch Start: 允许加载包含 set 的权重文件 ---
@@ -159,6 +159,28 @@ if __name__ == "__main__":
             base_path=os.path.join(args.dataset_base_path, 'val_data'),
             repeat=1, 
             num_frames=args.num_frames 
+        )
+    elif args.dataset == "AgiBotWCDataset":
+        dataset = AgiBotWCDataset(  
+            base_path=os.path.join(args.dataset_base_path, 'mnt/public/chenshengcong/dataset/iros_challenge_2025_acwm/train'),
+            repeat=args.dataset_repeat,
+            num_frames=args.num_frames,
+        )
+        val_dataset = AgiBotWCDataset(  
+            base_path=os.path.join(args.dataset_base_path, 'val'),
+            repeat=1,
+            num_frames=args.num_frames,
+        )
+    elif args.dataset == "AgiBotWCAbsDataset":
+        dataset = AgiBotWCAbsDataset(  
+            base_path=os.path.join(args.dataset_base_path, 'mnt/public/chenshengcong/dataset/iros_challenge_2025_acwm/train'),
+            repeat=args.dataset_repeat,
+            num_frames=args.num_frames,
+        )
+        val_dataset = AgiBotWCAbsDataset(  
+            base_path=os.path.join(args.dataset_base_path, 'val'),
+            repeat=1,
+            num_frames=args.num_frames,
         )
     else:
         raise NotImplementedError('this dataset type not implemented')

@@ -9,6 +9,220 @@ from accelerate import Accelerator
 from accelerate.utils import DistributedDataParallelKwargs
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
+import cv2
+from scipy.spatial.transform import Rotation
+import h5py
+
+class AgiBotWCDataset(torch.utils.data.Dataset):
+    def __init__(self,
+                 base_path='/opt/zsq/AgiBotWorldChallenge2026/WorldModel/mnt/public/chenshengcong/dataset/iros_challenge_2025_acwm/train',
+                 num_frames=9,
+                 repeat=1):
+
+        self.base_path = base_path
+        self.num_frames = num_frames
+        self.repeat = repeat
+        self.load_from_cache = False
+        # ===== 1. 按 episode 分组 =====
+        episode_dict = {}
+        for name in sorted(os.listdir(base_path)):
+            path = os.path.join(base_path, name)
+            if not os.path.isdir(path):
+                continue
+
+            key = "-".join(name.split("-")[:2])  # 367-648961
+            episode_dict.setdefault(key, []).append(path)
+
+        # 每个 episode 内排序
+        self.episodes = []
+        for k in episode_dict:
+            sub_paths = sorted(episode_dict[k])
+            self.episodes.append(sub_paths)
+
+        print(f"Found {len(self.episodes)} episodes.")
+
+        # ===== 2. 预计算 T =====
+        self.T_list = []
+
+        for ep in self.episodes:
+            T_total = 0
+            for sub in ep:
+                video_path = os.path.join(sub, "head_color.mp4")
+                cap = cv2.VideoCapture(video_path)
+                T_total += int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap.release()
+            self.T_list.append(T_total)
+
+        self.total_env = len(self.episodes)
+        self.length = self.total_env * repeat
+
+    def __len__(self):
+        return self.length
+
+    # ===== 拼接一个完整 episode =====
+    def _load_episode(self, ep_paths):
+        frames = []
+        pos_list = []
+        quat_list = []
+        grip_list = []
+
+        for sub in ep_paths:
+            # ---- video ----
+            video_path = os.path.join(sub, "head_color.mp4")
+            cap = cv2.VideoCapture(video_path)
+
+            sub_frames = []
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                sub_frames.append(frame)
+            cap.release()
+
+            # ---- h5 ----
+            h5_path = os.path.join(sub, "proprio_stats.h5")
+            with h5py.File(h5_path, 'r') as f:
+                pos = f['state/end/position'][:]       # [T,2,3]
+                quat = f['state/end/orientation'][:]   # [T,2,4]
+                grip = f['state/effector/position'][:] # [T,2]
+
+            # 对齐长度（防止视频和状态略有偏差）
+            if len(sub_frames) != pos.shape[0]:
+                raise ValueError(f"Frame count {len(sub_frames)} and pos length {pos.shape[0]} mismatch in {sub}")
+            T = min(len(sub_frames), pos.shape[0])
+
+            frames.extend(sub_frames[:T])
+            pos_list.append(pos[:T])
+            quat_list.append(quat[:T])
+            grip_list.append(grip[:T])
+
+        pos = np.concatenate(pos_list, axis=0)
+        quat = np.concatenate(quat_list, axis=0)
+        grip = np.concatenate(grip_list, axis=0)
+
+        return frames, pos, quat, grip
+
+    def __getitem__(self, idx):
+        ep_id = idx % self.total_env
+        ep_paths = self.episodes[ep_id]
+
+        frames, pos, quat, grip = self._load_episode(ep_paths)
+        T = len(frames)
+
+        # ===== 采样策略（完全复用你的）=====
+        if T > (self.num_frames - 1):
+            if np.random.rand() < 0.95:
+                start_idx = np.random.randint(0, T - self.num_frames + 2)
+                consecutive_ids = np.arange(start_idx, start_idx + self.num_frames - 1)
+                frame_ids = np.concatenate([[0], consecutive_ids])
+            else:
+                frame_ids = np.array([0,0,0,0,0,1,2,3,4,5,6,7,8])
+        else:
+            raise ValueError(f"T={T} too small")
+
+        # ===== video =====
+        video_list = []
+        for i in frame_ids:
+            img = frames[i]
+            if img.max() <= 1.0:
+                img = (img * 255).clip(0, 255)
+            video_list.append(Image.fromarray(img.astype(np.uint8)))
+
+        # ===== action =====
+        pos_sel = pos[frame_ids]     # [F,2,3]
+        quat_sel = quat[frame_ids]  # [F,2,4]
+        grip_sel = grip[frame_ids]  # [F,2]
+
+        F = len(frame_ids)
+        action = np.zeros((F, 14), dtype=np.float32)
+
+        for t in range(1, F):
+            for arm in range(2):
+                # --- position delta ---
+                dp = pos_sel[t, arm] - pos_sel[t-1, arm]
+
+                # --- rotation delta ---
+                R_t = Rotation.from_quat(quat_sel[t, arm]).as_matrix()
+                R_prev = Rotation.from_quat(quat_sel[t-1, arm]).as_matrix()
+                R_delta = R_t @ R_prev.T
+                rpy = Rotation.from_matrix(R_delta).as_euler("xyz")
+
+                # --- gripper ---
+                g = grip_sel[t, arm] / 120.0
+
+                action[t, arm*7:(arm+1)*7] = np.concatenate([dp, rpy, [g]])
+
+        # 第一个 action 固定
+        action[0] = np.array([0,0,0,0,0,0,0]*2, dtype=np.float32)
+
+        action_tensor = torch.from_numpy(action)
+
+        return {
+            "video": video_list,
+            "reference_image": [video_list[0]],
+            "action": action_tensor,
+        }
+
+
+class AgiBotWCAbsDataset(AgiBotWCDataset):
+    def __getitem__(self, idx):
+        ep_id = idx % self.total_env
+        ep_paths = self.episodes[ep_id]
+
+        frames, pos, quat, grip = self._load_episode(ep_paths)
+        T = len(frames)
+
+        # ===== 采样策略（完全复用你的）=====
+        if T > (self.num_frames - 1):
+            if np.random.rand() < 0.95:
+                start_idx = np.random.randint(0, T - self.num_frames + 2)
+                consecutive_ids = np.arange(start_idx, start_idx + self.num_frames - 1)
+                frame_ids = np.concatenate([[0], consecutive_ids])
+            else:
+                frame_ids = np.array([0,0,0,0,0,1,2,3,4,5,6,7,8])
+        else:
+            raise ValueError(f"T={T} too small")
+
+        # ===== video =====
+        video_list = []
+        for i in frame_ids:
+            img = frames[i]
+            if img.max() <= 1.0:
+                img = (img * 255).clip(0, 255)
+            video_list.append(Image.fromarray(img.astype(np.uint8)))
+
+        # ===== action (Absolute) =====
+        pos_sel = pos[frame_ids]     # [F,2,3]
+        quat_sel = quat[frame_ids]  # [F,2,4]
+        grip_sel = grip[frame_ids]  # [F,2]
+
+        F = len(frame_ids)
+        action = np.zeros((F, 14), dtype=np.float32)
+
+        for t in range(F):
+            for arm in range(2):
+                # --- absolute position ---
+                p = pos_sel[t, arm]
+
+                # --- absolute rotation ---
+                rpy = Rotation.from_quat(quat_sel[t, arm]).as_euler("xyz")
+
+                # --- gripper ---
+                g = grip_sel[t, arm] / 120.0
+
+                action[t, arm*7:(arm+1)*7] = np.concatenate([p, rpy, [g]])
+
+        action[0] = np.array([0,0,0,0,0,0,0]*2, dtype=np.float32)
+        
+        action_tensor = torch.from_numpy(action)
+
+        return {
+            "video": video_list,
+            "reference_image": [video_list[0]],
+            "action": action_tensor,
+        }
+
 
 class ImageDataset(torch.utils.data.Dataset):
     def __init__(

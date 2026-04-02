@@ -93,6 +93,7 @@ model_loader_configs = [
     (None, "d3abb829857dff2d9129d2f396a7eace", ["wan_video_dit"], [WanModel], "civitai"), # 5B TI2V action
     (None, "bc4824aef7c3f23d3378cec6e2b1316c", ["wan_video_dit"], [WanModel], "civitai"), # 5B TI2V action
     (None, "6efc7e19e87c1755f17dec14be3d0bf1", ["wan_video_dit"], [WanModel], "civitai"), # 5B TI2V action
+    (None, "c435810b89179880969e31c28235a02d", ["wan_video_dit"], [WanModel], "civitai"), # 5B TI2V action Agibot
     #
     (None, "aafcfd9672c3a2456dc46e1cb6e52c70", ["wan_video_dit"], [WanModel], "civitai"),
     (None, "6bfcfb3b342cb286ce886889d519a77e", ["wan_video_dit"], [WanModel], "civitai"), # 14B I2V
